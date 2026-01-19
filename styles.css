@@ -113,3 +113,19 @@ nav {
 nav a {
   margin-right: 1.5rem;
 }
+
+.authorship {
+  margin-top: 4rem;
+  padding-top: 2rem;
+  border-top: 1px solid #e0e0e0;
+  font-size: 0.875rem;
+  color: #666666;
+}
+
+.authorship h2 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #666666;
+  margin-top: 0;
+  margin-bottom: 0.75rem;
+}
