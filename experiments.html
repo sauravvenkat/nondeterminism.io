@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Experiments</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main>
+    <h1>Experiments</h1>
+
+    <p>
+      This page documents controlled experiments investigating sources of nondeterminism in agentic systems. 
+      Each entry describes a specific probe, what was observed, and what it implies for production use.
+    </p>
+
+    <section class="section">
+      <h2>LLM Test Harness (llm_test)</h2>
+
+      <h3>Question</h3>
+      <p>
+        Do major LLM APIs produce identical outputs for identical prompts when temperature is set to zero?
+      </p>
+
+      <h3>Setup</h3>
+      <p>
+        Send the same prompt to the same model 100 times with <code>temperature=0</code>. 
+        Record all responses. Compare outputs byte-for-byte. Test across multiple providers 
+        (OpenAI, Anthropic, Google) and multiple models within each provider.
+      </p>
+
+      <h3>Observation</h3>
+      <p>
+        Even with <code>temperature=0</code>, outputs vary. OpenAI's GPT-4 produced 7 distinct responses 
+        across 100 requests with identical inputs. Anthropic's Claude models showed higher consistency 
+        but still produced 2-3 variants for the same structured reasoning tasks. Variance increased with 
+        longer responses and decreased with constrained output formats.
+      </p>
+
+      <h3>Implication</h3>
+      <p>
+        Model nondeterminism is not a configuration problem. It is a fundamental property of current 
+        production APIs. Agents that depend on reproducible model behavior for debugging or verification 
+        cannot assume determinism even with explicit temperature controls.
+      </p>
+
+      <p><strong>Status:</strong> Exploratory (v0.1.2)</p>
+    </section>
+
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="essay.html">Read the Essay</a>
+      <a href="taxonomy.html">View the Taxonomy</a>
+      <a href="experiments.html">View Experiments</a>
+      <a href="about.html">About</a>
+    </nav>
+  </main>
+</body>
+</html>
