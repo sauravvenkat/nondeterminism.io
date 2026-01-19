@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Taxonomy of Nondeterminism in Agentic Systems</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main>
+    <h1>Taxonomy of Nondeterminism in Agentic Systems</h1>
+
+    <section class="section">
+      <h2>Model nondeterminism</h2>
+      
+      <div class="definition">
+        <h3>Definition</h3>
+        <p>
+          Variability in model outputs for identical prompts and parameters. Even with temperature set to zero, 
+          most production LLM APIs do not guarantee deterministic outputs across requests.
+        </p>
+      </div>
+
+      <div class="causes">
+        <h3>Common causes</h3>
+        <ul>
+          <li>Floating-point precision differences across hardware</li>
+          <li>Non-deterministic sampling implementations</li>
+          <li>Load balancing across model replicas with different quantization</li>
+          <li>Model version changes without explicit notification</li>
+        </ul>
+      </div>
+
+      <div class="implications">
+        <h3>Why it matters</h3>
+        <p>
+          If the foundational reasoning step cannot be reproduced, debugging agent failures becomes 
+          a statistical exercise rather than a deterministic investigation.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Tool nondeterminism</h2>
+      
+      <div class="definition">
+        <h3>Definition</h3>
+        <p>
+          External tool calls that return different results for the same inputs. This includes API calls, 
+          database queries, file system operations, and any interaction with stateful systems.
+        </p>
+      </div>
+
+      <div class="causes">
+        <h3>Common causes</h3>
+        <ul>
+          <li>Time-dependent data sources (current timestamp, market prices, weather)</li>
+          <li>Rate limits and throttling behaviors</li>
+          <li>External service failures and retries</li>
+          <li>Stateful operations (incrementing counters, depleting resources)</li>
+          <li>Network-dependent responses (latency, routing, CDN variations)</li>
+        </ul>
+      </div>
+
+      <div class="implications">
+        <h3>Why it matters</h3>
+        <p>
+          Tool outputs form the agent's perception of reality. When perception changes between runs, 
+          the entire decision tree diverges, making it impossible to isolate whether a failure was 
+          due to reasoning or simply different input data.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Retrieval nondeterminism</h2>
+      
+      <div class="definition">
+        <h3>Definition</h3>
+        <p>
+          Variability in retrieved context for identical queries. RAG systems, vector databases, and 
+          search indices introduce nondeterminism through ranking algorithms, approximate nearest 
+          neighbor search, and index staleness.
+        </p>
+      </div>
+
+      <div class="causes">
+        <h3>Common causes</h3>
+        <ul>
+          <li>Approximate vector similarity (ANN algorithms are probabilistic)</li>
+          <li>Index updates between queries</li>
+          <li>Tie-breaking in ranking that depends on insertion order or internal state</li>
+          <li>Reranking models with their own nondeterminism</li>
+          <li>Cache invalidation timing</li>
+        </ul>
+      </div>
+
+      <div class="implications">
+        <h3>Why it matters</h3>
+        <p>
+          Retrieved context directly shapes the model's reasoning. If the same query retrieves 
+          different documents, the agent's knowledge base becomes a moving target, and correctness 
+          cannot be verified through replay.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Temporal nondeterminism</h2>
+      
+      <div class="definition">
+        <h3>Definition</h3>
+        <p>
+          Behavior that depends on when the agent runs rather than what inputs it receives. This includes 
+          explicit time dependencies and implicit ones buried in tool behaviors or data sources.
+        </p>
+      </div>
+
+      <div class="causes">
+        <h3>Common causes</h3>
+        <ul>
+          <li>Direct use of system time in prompts or logic</li>
+          <li>Time-windowed queries (last 24 hours, this week, today's events)</li>
+          <li>Scheduled data refreshes</li>
+          <li>Time-based access controls and credentials</li>
+          <li>Business hours logic and timezone handling</li>
+        </ul>
+      </div>
+
+      <div class="implications">
+        <h3>Why it matters</h3>
+        <p>
+          Temporal coupling means failures can only be investigated "live" during the exact window 
+          when they occurred. Replaying an agent execution hours or days later will encounter a 
+          fundamentally different environment, making root cause analysis unreliable.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Hidden state leakage</h2>
+      
+      <div class="definition">
+        <h3>Definition</h3>
+        <p>
+          Dependence on state that is not explicitly captured as input. This includes environment variables, 
+          global configuration, user sessions, and any context that affects execution but is not visible 
+          in the agent's explicit inputs.
+        </p>
+      </div>
+
+      <div class="causes">
+        <h3>Common causes</h3>
+        <ul>
+          <li>Environment variables read at runtime</li>
+          <li>User authentication state and permissions</li>
+          <li>Feature flags and A/B test assignments</li>
+          <li>Implicit context from previous conversations or sessions</li>
+          <li>Global rate limit counters and quota state</li>
+          <li>Process-level randomness (thread scheduling, memory layout)</li>
+        </ul>
+      </div>
+
+      <div class="implications">
+        <h3>Why it matters</h3>
+        <p>
+          If inputs are incomplete, replay is impossible by definition. The agent appears to behave 
+          unpredictably, but the real issue is that its actual inputs were never fully captured. 
+          This is the most insidious form of nondeterminism because it masquerades as correct design.
+        </p>
+      </div>
+    </section>
+
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="essay.html">Read the essay</a>
+    </nav>
+  </main>
+</body>
+</html>
