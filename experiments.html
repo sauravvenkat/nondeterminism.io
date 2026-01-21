@@ -9,13 +9,253 @@
 <body>
   <main>
     <h1>Experiments</h1>
-
     <p>
       This page documents controlled experiments investigating sources of nondeterminism in agentic systems. 
       Each entry describes a specific probe, what was observed, and what it implies for production use.
     </p>
+    <nav>
+      <h2>Table of Contents</h2>
+      <ul>
+        <li><a href="#spelunk-cli">Spelunk CLI — Structured Investigation for Complex Data Systems</a></li>
+      </ul>
+    </nav>
 
-    <section class="section">
+    <section class="section" id="spelunk-cli">
+      <h2>Experiments: Spelunk CLI — Structured Investigation for Complex Data Systems</h2>
+
+      <h3>The problem</h3>
+      <p>
+        Large Airflow DAG ecosystems become archaeology sites. A single incident spans Airflow task logs, 
+        Docker images running on Kubernetes, BigQuery SQL transformations, Dockerized services producing 
+        to Kafka, Kafka consumers sinking data back to BigQuery, and Alembic-managed tables whose schemas 
+        live in migration files, not documentation.
+      </p>
+      <p>
+        When DAGs depend on other DAGs and dependencies number over 100, scattered throughout the codebase, 
+        table and schema lineage becomes incomplete or undocumented. Debugging is no longer local. You cannot 
+        isolate a single component; every investigation requires reconstructing context from multiple systems, 
+        each with its own logging, state management, and failure modes.
+      </p>
+
+      <h3>Why investigations break down</h3>
+      <p>
+        Investigations can fail <b>twice</b>: once in production, and once in reasoning. The production failure is 
+        the incident. The reasoning failure happens when you lose track of what you tested, which hypotheses 
+        you ruled out, and why you checked a specific table or config.
+      </p>
+      <p>
+        Without structure, investigations become:
+      </p>
+      <ul>
+        <li>Ad-hoc terminal commands with no record of what was run or why</li>
+        <li>Slack threads where conclusions are mixed with speculation</li>
+        <li>Jupyter notebooks that capture queries but not the reasoning</li>
+        <li>Context that evaporates after the incident closes</li>
+      </ul>
+      <p>
+        You cannot replay the investigation. You cannot hand it off mid-stream. You cannot verify whether 
+        a hypothesis was actually tested or just assumed.
+      </p>
+
+      <h3>The experiment</h3>
+      <p>
+        Spelunk CLI is an investigation workflow tool designed to be used alongside Cursor (or any LLM-assisted editor).
+        It does not automate investigations. It structures the workspace around the things that investigations usually lose:
+        code context, dependency boundaries, and a durable written trail.
+      </p>
+      <p>
+        Cursor is used to navigate the codebase, summarize unfamiliar components, and draft candidate queries or hypotheses.
+        Spelunk enforces a critical constraint: it does not execute queries. Humans execute queries. The investigation captures
+        what was run and what was learned.
+      </p>
+      <h3>How Spelunk approaches investigations</h3>
+      <p>
+        Spelunk treats an “integration” as the unit of debugging: not a single DAG, but a connected surface area of
+        DAGs, shared libraries, containers, and downstream consumers.
+      </p>
+
+      <p>
+        <code>spelunk init &lt;integration&gt;</code> initializes a local workspace with three pillars:
+      </p>
+      <ul>
+        <li>
+          <code>.repo_farm/</code>: a local checkout of all repositories referenced by the integration config, separated into:
+          <ul>
+            <li><strong>DAG repos</strong> (the orchestration layer)</li>
+            <li><strong>shared_dependencies</strong> (libraries and shared code used across DAGs/services)</li>
+          </ul>
+        </li>
+        <li>
+          <code>.documents/</code>: LLM-Generated documentation that's partitioned by the integration and then by the DAG ID.
+        </li>
+        <li>
+          <code>schemas/</code>: JSON cached schema definitions for the all tables in the integration for a specific project. 
+          These are used to validate the schema of the tables in the integration and also used by the LLM during investigation. Serves as a guardrail to prevent the LLM from hallucinating about the schema and not using partitions or other optimizations.
+        </li>
+      </ul>
+
+      <p>
+        When an incident starts, <code>spelunk investigate &lt;integration&gt;</code> creates a timestamped investigation
+        directory under <code>.investigations/</code> and opens a templated README.
+      </p>
+      <p>
+        The investigation template is intentionally rigid, but it is not manually filled line by line.
+        It is populated through a structured back-and-forth between the engineer and the LLM.
+      </p>
+      <p>
+        Each investigation unfolds in explicit phases, appended to the README in a fixed format:
+      </p>
+      <ul>
+        <li><strong>Phase N</strong>: Description of the suspected issue or failure mode</li>
+        <li><strong>Hypothesis</strong>: A concrete, testable claim generated or refined by the LLM</li>
+        <li><strong>Query N</strong>: A candidate query or inspection step proposed by the LLM</li>
+        <li><strong>Results</strong>: Output pasted in by the human after manual execution</li>
+      </ul>
+      <p>
+        This creates a logged conversation between the engineer and the agent, where reasoning is captured
+        incrementally and evidence is explicitly attached to each hypothesis. The format makes it impossible
+        to “mentally skip” steps or assume something was checked when it was not.
+      </p>
+
+      <p>
+        The workflow is deliberately human-led. Cursor helps you search the <code>.repo_farm</code>, trace call paths,
+        and reason across unfamiliar code. Spelunk complements this with templated <code>.prmpt</code> files that
+        standardize how questions are asked during an investigation.
+      </p>
+      <p>
+        These prompt templates encode investigation intent — for example, how to ask about schema usage, dependency
+        boundaries, or DAG-to-DAG coupling — while constraining the LLM to the local repository and cached schema context.
+        They are designed to reduce hallucination, not eliminate judgment.
+      </p>
+      <p>
+        Concretely, documentation is generated by the <b>engineer</b> using prompt templates in <code>prompts/</code>.
+        Each template is a <code>.prmpt</code> file: you paste it into Cursor with the integration’s local context
+        (DAG repo, <code>shared_dependencies</code>, and cached <code>schemas/</code>). Cursor then walks the DAG code,
+        its dependency graph, and referenced tables to produce a detailed technical write-up, which Spelunk stores under
+        <code>.documents/</code> (partitioned by integration and DAG) for fast lookup during incidents.
+      </p>
+      <p>
+        Execution stays manual. You run the SQL / kubectl / log queries yourself, review the results, and paste
+        them back into the investigation README (or linked files) as evidence. The <code>.prmpt</code> files guide
+        reasoning; humans remain responsible for decisions.
+      </p>
+
+      <h3>What Spelunk enforces (by design)</h3>
+      <ul>
+        <li><strong>No autonomous execution.</strong> Queries are reviewed before they run.</li>
+        <li><strong>Manual logging.</strong> If you don't log it, it didn't happen. This forces conscious capture.</li>
+        <li><strong>Temporal ordering.</strong> Files are timestamped. You see the investigation as it unfolded.</li>
+        <li><strong>Disposability.</strong> Investigations are temporary. Once conclusions move to Confluence or 
+            a postmortem doc, the Spelunk directory is archived. It served its purpose.</li>
+      </ul>
+      <p>
+        <strong>Safety note:</strong> Disposable does not mean "accidentally delete the only copy." Conclusions 
+        must migrate to durable storage before the investigation directory is removed.
+      </p>
+
+      <h3>Why this matters</h3>
+      <p>
+        In systems with connected DAGs, Docker layers, Kafka pipelines, and Alembic-managed schemas, incidents are distributed by default.
+        Debugging requires reconstructing state across code, data, and execution history. Doing this mentally does not scale.
+      </p>
+      <p>
+        Without structure, engineers spend most of their time:
+      </p>
+      <ul>
+        <li>re-discovering where code lives</li>
+        <li>re-building partial mental models of dependencies</li>
+        <li>re-checking assumptions that were already tested elsewhere</li>
+      </ul>
+      <p>
+        That is where time is lost.
+      </p>
+      <p>
+        Spelunk externalizes that reconstruction. By pulling all relevant repositories into a single workspace, separating DAG code from shared
+        dependencies, and forcing explicit written reasoning, it collapses the search space early.
+      </p>
+      <p>
+        The result is not just cleaner investigations — it is <strong>faster ones</strong>.
+      </p>
+      <p>
+        Investigations that previously took days of context-gathering converge in minutes because:
+      </p>
+      <ul>
+        <li>the relevant code is already local</li>
+        <li>dependency boundaries are explicit</li>
+        <li>schema history and undocumented lineage are surfaced early</li>
+        <li>hypotheses and evidence are written down instead of re-inferred</li>
+      </ul>
+      <p>
+        Spelunk does not speed up debugging by automation. It speeds it up by <strong>eliminating repeated discovery and cognitive thrash</strong>.
+      </p>
+      <p>
+        You still run the queries. You just stop re-learning the system from scratch every time.
+      </p>
+      <h3>Gotchas and how they are handled</h3>
+      <p>
+        Spelunk is intentionally constrained, and those constraints surface predictable failure modes.
+        This section documents the most common ones observed so far, along with the practical resolutions.
+      </p>
+      <h4>1. Multi-DAG issues and partial context</h4>
+      <p>
+        In complex platforms, failures often span multiple connected DAGs. Spelunk generates detailed
+        documentation <em>per DAG</em>, including that DAG’s dependencies, schemas, and inferred lineage.
+        As a result, the accuracy and usefulness of an investigation can vary depending on how much of the
+        true upstream context is visible.
+      </p>
+      <p>
+        When the failure is caused upstream, a single-DAG investigation may surface symptoms rather than
+        root cause. This is not a tooling bug — it is a context boundary.
+      </p>
+      <p>
+        <strong>Resolution:</strong> Start investigations from the most downstream DAG where the failure
+        is observed, then move upward through upstream DAGs incrementally. Each investigation refines
+        context and narrows the search space. This mirrors how failures actually propagate through
+        production systems.
+      </p>
+
+      <h4>2. Poorly generated SQL despite guardrails</h4>
+      <p>
+        Even with schema caching and constrained prompts, LLM-generated SQL can be incorrect. This is an
+        expected consequence of model nondeterminism, not a surprise.
+      </p>
+      <p>
+        The most common failure modes are:
+      </p>
+      <ul>
+        <li>Missing or incorrect partition filters</li>
+        <li>Hallucinated column names</li>
+        <li>Invalid SQL syntax, particularly with BigQuery-specific constructs</li>
+      </ul>
+
+      <p>
+        <strong>Hallucinated columns:</strong> Reintroduce the relevant schema documentation into the Cursor
+        context and provide the exact error message returned by BigQuery. In most cases, the LLM corrects
+        the query on the next iteration.
+      </p>
+
+      <p>
+        <strong>Missing or incorrect partitions:</strong> Apply human judgment. Understanding which
+        partition is relevant depends on the debugging intent (backfill vs. incremental run vs. replay).
+        This is a core reason execution remains human-led.
+      </p>
+
+      <p>
+        <strong>Incorrect SQL syntax:</strong> Provide a reference to the BigQuery SQL syntax or correct
+        the query manually. Syntax errors are mechanical and faster to fix directly than to debate with
+        the model.
+      </p>
+
+      <p>
+        These failure modes reinforce a core design principle: Spelunk accelerates investigations by
+        structuring reasoning and context, not by delegating authority. The human remains responsible
+        for correctness.
+      </p>
+
+
+    </section>
+
+    <!-- <section class="section">
       <h2>LLM Test Harness (llm_test)</h2>
 
       <h3>Question</h3>
@@ -46,7 +286,7 @@
       </p>
 
       <p><strong>Status:</strong> Exploratory (v0.1.2)</p>
-    </section>
+    </section> -->
 
     <nav>
       <a href="index.html">Home</a>
