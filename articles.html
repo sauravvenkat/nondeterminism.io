@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Articles - Nondeterminism in Agentic Systems</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main>
+    <h1>Articles</h1>
+
+    <p>
+      A collection of writings on nondeterminism, reproducibility, and building reliable agentic systems.
+    </p>
+
+    <!-- Table of Contents -->
+    <div class="toc">
+      <ul>
+        <li><a href="#article-1">GGUF Wins on Determinism: Why Managed LLM Services Can’t Offer Reproducible Inference</a></li>
+      </ul>
+    </div>
+
+    <!-- Articles -->
+    <article id="article-1" class="section">
+      <h2>GGUF Wins on Determinism: Why Managed LLM Services Can’t Offer Reproducible Inference</h2>
+      <p class="article-meta">Saurav Venkat</p>
+      <p class="article-meta">January 24, 2026</p>
+      
+      <p>
+        Most discussions comparing local LLMs to managed LLM services focus on cost, privacy, or latency. Those are valid considerations—but they are secondary.
+        The decisive difference is determinism.
+        If an LLM-powered system cannot be reliably replayed—across time, environments, and failures—you do not truly control it. This article argues that managed LLM services are structurally incompatible with strong determinism, and that GGUF wins because it restores ownership of the model boundary and execution surface.
+        This is not a critique of model quality or provider competence. It is a systems argument.
+      </p>
+      <h3>What Determinism Actually Means (Precisely)</h3>
+      <p>
+        In LLM systems, determinism does not mean “temperature = 0” or “usually the same output.” It means:
+        Given the same inputs and environment, the system produces the same outputs, and failures can be replayed, inspected, and explained.
+        That definition implies four concrete layers.
+      </p>
+
+      <h4>1. Token-Level Determinism</h4>
+      <ul>
+        <li>Same model weights</li>
+        <li>Same tokenizer</li>
+        <li>Same sampling algorithm</li>
+        <li>Same random seed</li>
+        <li>Same prompt bytes</li>
+      </ul>
+      <p>
+        Under these conditions, the token sequence should be identical.
+      </p>
+      <h4>2. Execution Determinism</h4>
+      <ul>
+        <li>No hidden retries</li>
+        <li>No dynamic routing</li>
+        <li>No silent model swaps</li>
+        <li>No backend hotfixes affecting inference</li>
+      </ul>
+      <p>The execution path itself must be stable.</p>
+      <h4>3. Environment Determinism</h4>
+      <ul>
+        <li>Fixed model artifact</li>
+        <li>Fixed inference binary</li>
+        <li>Fixed quantization</li>
+        <li>Controlled runtime and hardware behavior</li>
+      </ul>
+      <p>This mirrors how reproducibility is achieved in traditional software systems.</p>
+      <h4>4. Observability and Replay</h4>
+      <ul>
+        <li>Visibility into token streams</li>
+        <li>Ability to inspect truncation and stopping conditions</li>
+        <li>A stable surface for replaying historical executions</li>
+      </ul>
+      <p>If any of these layers are opaque, determinism collapses.</p>
+      <h3>Why Managed LLM Services Cannot Be Deterministic</h3>
+      <p>Managed LLM services are optimized for capability, scale, and convenience. Determinism is not their goal—and structurally, it cannot be.</p>
+      <h3>You Do Not Own the Model Boundary</h3>
+      <p>When you call a managed LLM API, you are not invoking a fixed model artifact. You are invoking a service abstraction.</p>
+      <p>That abstraction may include:</p>
+      <ul>
+        <li>Dynamic batching and request coalescing</li>
+        <li>Infrastructure-level retries</li>
+        <li>Kernel and precision optimizations</li>
+        <li>Model updates behind version aliases</li>
+        <li>Changes to tokenization or preprocessing</li>
+      </ul>
+      <p>
+        Even when providers expose parameters like temperature, top_p, or seed, these are best-effort controls, not guarantees of identical execution across time.
+      </p>
+      <p>
+        You are calling a policy-driven service, not a frozen binary.
+      </p>
+      <h3>“Temperature = 0” Is Not Determinism</h3>
+      <p>
+        Setting temperature to zero disables sampling randomness. It does not guarantee deterministic execution.
+      </p>
+      <p>Reasons include:</p>
+      <ul>
+        <li>Floating-point arithmetic is not strictly deterministic across kernels and hardware</li>
+        <li>Parallel decoding can change tie-breaking behavior</li>
+        <li>Tokenizer or preprocessing changes alter the input stream</li>
+        <li>Backend optimizations can subtly change numerical outcomes</li>
+      </ul>
+      <p>Temperature controls sampling. Determinism requires control over the entire execution surface.</p>
+      <h3>There Is No Stable Replay Surface</h3>
+      <p>
+        Some managed services offer model version pinning (for example, <code>gpt-4-0613</code> or <code>claude-3-opus-20240229</code>). 
+        This helps—but it only freezes the model weights, not the execution surface.
+      </p>
+      <p>Even with pinned versions, you generally cannot:</p>
+      <ul>
+        <li>Download the exact model artifact used in production</li>
+        <li>Replay a historical failure locally with identical infrastructure</li>
+        <li>Inspect logits, intermediate states, or internal routing decisions</li>
+        <li>Guarantee identical outputs if the provider changes backend optimizations</li>
+      </ul>
+      <p>Short-term repeatability may exist. <b>Long-term reproducibility does not.</b></p>
+      <p>That alone disqualifies managed LLMs from CI-grade validation, auditing, and safety-critical automation.</p>
+      <h3>Why GGUF Wins</h3>
+      <p>
+        GGUF does not win because it is cheaper, faster, or more convenient.
+        It wins because it restores <b>ownership of the execution boundary</b>.
+      </p>
+      <h3>GGUF Freezes the Model Artifact</h3>
+      <p>A GGUF file bundles:</p>
+      <ul>
+        <li>The exact model weights</li>
+        <li>The exact tokenizer</li>
+        <li>Quantization metadata</li>
+        <li>Architecture configuration</li>
+      </ul>
+      <p>
+        When paired with a pinned inference engine (for example, a specific llama.cpp build) and fixed runtime parameters (seed, sampling settings), GGUF <b>turns an LLM into a versioned software artifact.</b>
+      </p>
+      <p>This is the critical shift: the model becomes an immutable binary, and determinism becomes a function of controlling the runtime environment.</p>
+      <h3>Determinism Becomes an Engineering Choice Again</h3>
+      <p>With GGUF, you can:</p>
+      <ul>
+        <li>Checksum model artifacts</li>
+        <li>Pin inference binaries</li>
+        <li>Fix seeds and runtime flags</li>
+        <li>Re-run inference byte-for-byte</li>
+        <li>Diff outputs across executions</li>
+      </ul>
+      <p>These are the same tools used to reason about correctness everywhere else in software engineering.</p>
+      <h3>Replay, Diff, and Audit Are Possible</h3>
+      <p>Because the model and runtime are local and inspectable:</p>
+      <ul>
+        <li>Failures can be replayed</li>
+        <li>Token streams can be compared</li>
+        <li>First-divergence points can be identified</li>
+      </ul>
+      <p>This is fundamentally impossible when the execution surface is hidden behind a managed service.</p>
+      <h3>Trade-offs (And Why They’re Worth It)</h3>
+      <p>GGUF comes with real costs</p>
+      <ul>
+        <li>Hardware management</li>
+        <li>Deployment Complexity</li>
+        <li>Lower peak throughput</li>
+        <li>Occasional capability gaps versus frontier models</li>
+      </ul>
+      <p>But these are <b>engineering trade-offs</b>, not epistemic uncertainty.</p>
+      <p>Managed LLM services trade away:</p>
+      <ul>
+        <li>Reproducibility</li>
+        <li>Replayability</li>
+        <li>Auditability</li>
+      </ul>
+      <p>In a nutshell: say goodbye to determinism, in exchange for convenience.</p>
+      <h3>When Managed LLMs Are the Wrong Tool</h3>
+      <p>Despite these costs, GGUF is the only viable choice when determinism is non-negotiable. Managed LLM services are poorly suited for:</p>
+      
+      <h4>CI or Regression Testing</h4>
+      <p>
+        Tests must be stable across runs. A test that passes or fails nondeterministically is worse than no test—it trains engineers to ignore failures. 
+        Without deterministic outputs, you cannot distinguish between a legitimate regression and random sampling variance.
+      </p>
+
+      <h4>Diff-Based Validation</h4>
+      <p>
+        When you change a prompt or system instruction, you need to know whether the change improved output quality. 
+        This requires comparing outputs for identical inputs. If the baseline itself is unstable, validation becomes impossible.
+      </p>
+
+      <h4>Safety or Compliance-Critical Systems</h4>
+      <p>
+        Regulatory frameworks (medical, financial, legal) often require audit trails showing exactly how a decision was reached. 
+        "The model said so, but we can't reproduce it" is not an acceptable answer when lives, money, or legal liability are at stake.
+      </p>
+
+      <h4>Post-Mortem Debugging of Production Failures</h4>
+      <p>
+        When an agent makes a bad decision in production, the first step is reproducing the failure. 
+        If you cannot replay the exact execution that led to the failure, you cannot verify that your fix actually works. 
+        You are left guessing.
+      </p>
+
+      <p>
+        If you need to understand why a decision was made, you need to be able to replay the decision.
+        Managed LLMs fail by design.
+      </p>
+      <h3>Conclusion</h3>
+      <p>Determinism is not a configuration option.</p>
+      <p>It is a property of <b>ownership</b>.</p>
+      <p>
+        GGUF wins because it freezes the model artifact and makes the execution surface inspectable and replayable. 
+        Managed LLM services cannot offer the same guarantees, not because of poor engineering, but because their abstraction model prioritizes convenience over reproducibility.
+      </p>
+      <p>
+        If you cannot replay it, you do not understand it.
+        And if you do not understand it, you cannot trust it in production.
+      </p>
+      <p>That is why <b>GGUF wins on determinism.</b></p>
+    </article>
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="rfc-prmpt.html">RFC</a>
+      <a href="taxonomy.html">Taxonomy</a>
+      <a href="experiments.html">Experiments</a>
+      <a href="about.html">About</a>
+    </nav>
+  </main>
+</body>
+</html>
