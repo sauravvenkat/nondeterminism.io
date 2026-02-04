@@ -18,6 +18,7 @@
     <div class="toc">
       <ul>
         <li><a href="#article-1">GGUF Wins on Determinism: Why Managed LLM Services Can’t Offer Reproducible Inference</a></li>
+        <li><a href="#article-2">.prmpt: A Structured Contract for Working With Unreliable Language Models</a></li>
       </ul>
     </div>
 
@@ -214,6 +215,194 @@
       </p>
       <p>That is why <b>GGUF wins on determinism.</b></p>
     </article>
+
+    <article id="article-2" class="section">
+      <h2>.prmpt: A Structured Contract for Working With Unreliable Language Models</h2>
+      <p class="article-meta">Saurav Venkat</p>
+      <p class="article-meta">February 4, 2026</p>
+    
+      <p>
+        Large Language Models are powerful—but they are fundamentally unreliable.
+        They hallucinate, ignore instructions, conflate roles, and behave differently across runs.
+        And yet we keep embedding them inside production systems as if they were deterministic software components.
+        That mismatch is the root problem <code>.prmpt</code> is designed to solve.
+      </p>
+    
+      <p>
+        <code>.prmpt</code> is not a prompt library. It’s not an SDK wrapper. It’s not prompt-engineering flair.
+        It is a <b>specification</b>: a structured, machine-readable contract for defining how an LLM-backed component should behave,
+        how context should be constructed, what outputs are acceptable, and what to do when the model deviates.
+      </p>
+    
+      <h3>The Real Problem With Prompts</h3>
+      <p>
+        In most codebases, prompts are treated like strings: free-form text copied between files, glued to code paths, and
+        modified without review or validation. This works in demos. In real systems it fails silently.
+      </p>
+      <p>
+        If an LLM response affects reliability, safety, money, or user experience, prompts stop being “text” and become:
+      </p>
+      <ul>
+        <li>Configuration</li>
+        <li>APIs and contracts</li>
+        <li>Schemas and validations</li>
+        <li>Versioned artifacts</li>
+      </ul>
+      <p>
+        <code>.prmpt</code> exists because the “string in code” approach has no guardrails:
+        no structured boundaries, no enforcement, no reproducible execution surface, and no auditable drift control.
+      </p>
+    
+      <h3>What .prmpt Is</h3>
+      <p>
+        <code>.prmpt</code> is a declarative format for defining:
+      </p>
+      <ul>
+        <li><b>Roles and precedence</b> (system, developer, user, tool)</li>
+        <li><b>Intent boundaries</b> (what must remain invariant vs what can vary)</li>
+        <li><b>Inputs</b> (schemas and constraints)</li>
+        <li><b>Resolution logic</b> (how context is assembled)</li>
+        <li><b>Validators</b> (what makes output acceptable)</li>
+        <li><b>Enforcers</b> (what happens when it isn’t)</li>
+      </ul>
+    
+      <p>
+        Think of it as <b>OpenAPI for LLM behavior</b>—not in the sense that it makes LLMs deterministic,
+        but in the sense that it makes your expectations explicit, testable, and enforceable.
+      </p>
+    
+      <h3>Why Structure Matters for LLMs</h3>
+      <p>
+        LLMs are not deterministic functions. They are probabilistic token generators conditioned on context.
+        In practice, this means:
+      </p>
+      <ul>
+        <li>Instruction ordering changes outcomes</li>
+        <li>Role boundaries leak</li>
+        <li>Ambiguity compounds across multi-step workflows</li>
+        <li>Small edits cause “prompt drift” that no one notices until production breaks</li>
+      </ul>
+      <p>
+        <code>.prmpt</code> forces you to stop relying on vibes and start doing what engineers do:
+        define contracts, constrain inputs, validate outputs, and make failure modes observable.
+      </p>
+    
+      <h3>Core Design Principles</h3>
+    
+      <h4>1. Contracts Over Cleverness</h4>
+      <p>
+        If behavior matters, it should be specified—not implied. A contract is something you can review, diff, test, and enforce.
+        A clever prompt is a fragile artifact that decays under pressure.
+      </p>
+    
+      <h4>2. Determinism Around the Model</h4>
+      <p>
+        You won’t make the model deterministic. But you can make everything around it deterministic:
+        input schemas, context assembly, tool wiring, retries, timeouts, validation gates, and deployment versioning.
+      </p>
+    
+      <h4>3. Explicit Failure Modes</h4>
+      <p>
+        Invalid inputs, invalid outputs, and policy violations should fail loudly.
+        Silent degradation is how LLM systems become un-debuggable.
+      </p>
+    
+      <h4>4. Separation of Concerns</h4>
+      <p>
+        System intent, user input, and tools should never be blended into one “prompt blob.”
+        Boundary loss is one of the fastest ways to create instruction conflicts and accidental capability exposure.
+      </p>
+    
+      <h4>5. Replayability as a First-Class Requirement</h4>
+      <p>
+        If a model decision matters, you should be able to reconstruct what happened.
+        Without replay, you don’t have debugging—you have storytelling.
+      </p>
+    
+      <h3>What a .prmpt File Defines</h3>
+      <p>
+        At a high level, a <code>.prmpt</code> file represents a contract for an LLM-backed component:
+      </p>
+      <ul>
+        <li><b>Metadata</b>: identity, ownership, versioning</li>
+        <li><b>System contract</b>: invariant behavioral rules</li>
+        <li><b>Inputs</b>: structured arguments / schema constraints</li>
+        <li><b>Resolution</b>: context assembly and template composition</li>
+        <li><b>Validators</b>: structural + semantic checks on outputs</li>
+        <li><b>Enforcement</b>: retry, fallback, block, escalate, redact, or degrade</li>
+      </ul>
+    
+      <p>
+        This mirrors how reliable systems are built everywhere else:
+        define the contract, control the boundaries, validate the outputs, and make failures observable.
+        LLMs shouldn’t be exempt from basic engineering discipline.
+      </p>
+    
+      <h3>What .prmpt Is Not</h3>
+      <p>
+        <code>.prmpt</code> does not magically make LLMs safe or eliminate hallucinations. It does not replace judgment.
+        It does not guarantee perfect outputs.
+      </p>
+      <p>
+        What it does is make failures <b>visible</b> and <b>actionable</b>:
+      </p>
+      <ul>
+        <li>You can detect drift</li>
+        <li>You can enforce output structure</li>
+        <li>You can block unsafe or invalid behavior</li>
+        <li>You can reason about changes with diffs and tests</li>
+      </ul>
+    
+      <h3>Why a Spec (Not Just a Library)</h3>
+      <p>
+        Libraries come and go. Specs outlive implementations.
+        <code>.prmpt</code> is intentionally spec-first so that:
+      </p>
+      <ul>
+        <li>Multiple runtimes can implement it</li>
+        <li>Tooling can evolve independently</li>
+        <li>Behavior remains portable</li>
+        <li>Ownership stays with engineers, not vendors</li>
+      </ul>
+    
+      <p>
+        This is how the industry standardized everything that mattered: HTTP, SQL, OpenAPI, YAML.
+        If LLMs are becoming infrastructure, they need infrastructure-grade contracts.
+      </p>
+    
+      <h3>Where This Fits in Production</h3>
+      <p>
+        <code>.prmpt</code> is designed to compose with real systems:
+      </p>
+      <ul>
+        <li>Agent frameworks and tool calling</li>
+        <li>RAG pipelines</li>
+        <li>CI validation and regression testing</li>
+        <li>Observability and policy enforcement</li>
+        <li>Replay systems (for example, deterministic run recording and diffing)</li>
+      </ul>
+    
+      <p>
+        The point is not to make LLMs “smart.”
+        The point is to make LLM behavior <b>boring, inspectable, and defensible</b>.
+        That’s what scales.
+      </p>
+    
+      <h3>Conclusion</h3>
+      <p>
+        LLMs are unreliable collaborators. Pretending they are deterministic components is how systems fail.
+      </p>
+      <p>
+        <code>.prmpt</code> is a structured contract for working with that reality:
+        explicit boundaries, structured inputs, validation gates, and enforcement paths.
+        Not magic—engineering.
+      </p>
+      <p>
+        If a system can’t be reasoned about, it can’t be trusted.
+        <code>.prmpt</code> is how we make LLM systems reason-able again.
+      </p>
+    </article>
+    
     <nav>
       <a href="index.html">Home</a>
       <a href="rfc-prmpt.html">RFC</a>
