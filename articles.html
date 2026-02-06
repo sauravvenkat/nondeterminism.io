@@ -19,6 +19,7 @@
       <ul>
         <li><a href="#article-1">GGUF Wins on Determinism: Why Managed LLM Services Can’t Offer Reproducible Inference</a></li>
         <li><a href="#article-2">.prmpt: A Structured Contract for Working With LLMs in Production</a></li>
+        <li><a href="#article-3">Rethinking “LLM-as-a-Judge” in Production Systems</a></li>
       </ul>
     </div>
 
@@ -402,6 +403,309 @@
         <code>.prmpt</code> is how we make LLM systems reason-able again.
       </p>
     </article>
+    <article id="article-3" class="section">
+      <h2>Rethinking “LLM-as-a-Judge” in Production Systems</h2>
+      <p class="article-meta">Saurav Venkat</p>
+      <p class="article-meta">February 6, 2026</p>
+    
+      <p>
+        There’s a growing pattern in modern LLM-powered systems:
+      </p>
+      <ul>
+        <li>An LLM generates SQL → another LLM “reviews” it</li>
+        <li>An LLM drafts an email → another LLM checks tone</li>
+        <li>An LLM produces an answer → another LLM judges correctness</li>
+      </ul>
+    
+      <p>
+        This is often framed as <i>LLMs judging LLMs</i>.
+        It sounds elegant. It sounds scalable.
+      </p>
+    
+      <p>
+        It’s also a systems mistake.
+      </p>
+    
+      <p>
+        This article is not anti-LLM. I use LLMs extensively.
+        But I am deeply skeptical of using <b>nondeterministic systems as final judges</b>,
+        especially when <b>deterministic</b> enforcement is available.
+      </p>
+    
+      <h3>What a Judge Is Supposed to Do</h3>
+      <p>
+        A judge—human or machine—has a specific role in a system. It must provide:
+      </p>
+      <ul>
+        <li><b>Determinism</b>: the same input yields the same decision</li>
+        <li><b>Reproducibility</b>: decisions can be replayed and inspected</li>
+        <li><b>Auditability</b>: a human can understand why something passed or failed</li>
+      </ul>
+    
+      <p>
+        If your judge fails these properties, it is not enforcing rules.
+        It is guessing.
+      </p>
+    
+      <p>
+        LLMs, by default, fail all three.
+        They are probabilistic, drift across versions, reinterpret intent,
+        and cannot be meaningfully replayed.
+      </p>
+    
+      <p>
+        This is acceptable for <i>generation</i>.
+        It is unacceptable for <i>enforcement</i>.
+      </p>
+    
+      <h3>Example 1: LLM-Generated SQL</h3>
+      <p>
+        This is the clearest case—and the most common misuse.
+      </p>
+    
+      <p>
+        Teams want to ensure LLM-generated SQL:
+      </p>
+      <ul>
+        <li>Does not hallucinate columns</li>
+        <li>Uses correct schemas</li>
+        <li>Enforces partition filters</li>
+        <li>Avoids accidental full-table scans</li>
+      </ul>
+    
+      <p>
+        The common solution today:
+        <br/>
+        <i>“Let another LLM review the SQL.”</i>
+      </p>
+    
+      <p>
+        This is a category error.
+      </p>
+    
+      <p>
+        SQL is a formal language with a defined grammar,
+        executed against a known schema with explicit metadata.
+        There is no ambiguity here.
+      </p>
+    
+      <h4>Deterministic Enforcement</h4>
+      <p>
+        The correct approach is static analysis:
+      </p>
+      <ul>
+        <li>Parse SQL into an AST</li>
+        <li>Extract referenced tables and columns</li>
+        <li>Validate against a frozen schema snapshot</li>
+        <li>Enforce partition predicates where required</li>
+        <li>Reject or rewrite before execution</li>
+      </ul>
+    
+      <p>
+        This yields identical behavior every time,
+        clear failure reasons,
+        and predictable cost and correctness.
+      </p>
+    
+      <p>
+        <b>An LLM judge cannot outperform a deterministic parser on a deterministic language.</b>
+      </p>
+    
+      <h3>Example 2: “Polite” or “Professional” Text</h3>
+      <p>
+        This is where confusion often sets in.
+      </p>
+    
+      <p>
+        Teams say:
+        <br/>
+        <i>“Politeness is subjective—we need an LLM to judge it.”</i>
+      </p>
+    
+      <p>
+        But “polite” is not magic.
+        It is a policy.
+      </p>
+    
+      <p>
+        Once defined, it becomes enforceable.
+      </p>
+    
+      <ul>
+        <li>No profanity</li>
+        <li>No insults or harassment</li>
+        <li>No threats</li>
+        <li>No sexual or discriminatory content</li>
+      </ul>
+    
+      <h4>Deterministic Enforcement</h4>
+      <ul>
+        <li>Lexicon-based profanity and slur detection</li>
+        <li>Pattern-based insult and threat detection</li>
+        <li>Explicit rule violations with named reasons</li>
+        <li>Structured error output</li>
+      </ul>
+    
+      <p>
+        LLMs are well-suited for constraint satisfaction via generation, 
+        but ill-suited for authoritative constraint evaluation.
+      </p>
+    
+      <h3>Example 3: Preventing Private Data Leaks</h3>
+      <p>
+        Privacy is where LLM judges quietly become dangerous.
+      </p>
+    
+      <p>
+        Teams often say:
+        <br/>
+        <i>“We’ll ask another LLM if the email leaks private data.”</i>
+      </p>
+    
+      <p>
+        Privacy violations are not matters of opinion.
+        They are detectable patterns.
+      </p>
+    
+      <ul>
+        <li>Email addresses</li>
+        <li>Phone numbers</li>
+        <li>SSNs or national IDs</li>
+        <li>Credit card numbers</li>
+        <li>API keys and secrets</li>
+        <li>Internal URLs or identifiers</li>
+      </ul>
+    
+      <p>
+        An LLM judge may miss leaks, hallucinate violations,
+        and cannot guarantee recall or auditability.
+      </p>
+    
+      <h4>Deterministic Privacy Enforcement</h4>
+      <ul>
+        <li>Regex and checksum validation</li>
+        <li>Secret scanners</li>
+        <li>Allowlists and denylists</li>
+        <li>Explicit trust-boundary rules</li>
+        <li>Structured violation reporting</li>
+      </ul>
+    
+      <p>
+        This is how real DLP systems work.
+        An LLM judge is not a DLP system.
+      </p>
+    
+      <h3>Why LLM-as-a-Judge Feels Attractive</h3>
+      <p>
+        LLM-as-a-judge feels appealing because it reduces upfront thinking
+        and avoid defining hard rules.
+      </p>
+    
+      <p>
+        But flexibility hides risk.
+      </p>
+    
+      <p>
+        Rules fail loudly.
+        LLM judges fail silently.
+      </p>
+    
+      <h3>The Real Problem: Collapsing Trust Boundaries</h3>
+      <p>
+        The moment an LLM is allowed to approve content that crosses a trust boundary—
+        SQL execution, outbound email, policy enforcement—you’ve inverted responsibility.
+      </p>
+    
+      <p>
+        You’ve allowed a <i>nondeterministic</i> system to act as a gatekeeper.
+      </p>
+    
+      <p>
+        Trust boundaries demand determinism, traceability,
+        and conservative failure modes.
+      </p>
+    
+      <h3>The Correct Architecture</h3>
+      <ol>
+        <li>LLM generates output</li>
+        <li><b>Deterministic enforcers validate</b></li>
+        <li>Violations return structured errors</li>
+        <li>LLM revises based on explicit feedback</li>
+        <li>Repeat until valid</li>
+      </ol>
+    
+      <p>
+        LLMs propose.
+        Deterministic systems decide.
+      </p>
+    
+      <h3>The Principle</h3>
+      <p>
+        <b>
+          If a constraint can be expressed deterministically,
+          it should never be enforced probabilistically.
+        </b>
+      </p>
+    
+      <p>
+        LLM-as-a-judge should be the last resort, not the default.
+        If something protects money, users, privacy, or trust,
+        it must be deterministic.
+      </p>
+    
+      <h3>Conclusion</h3>
+      <p>
+        This isn’t about distrusting LLMs.
+        It’s about respecting system boundaries.
+      </p>
+    
+      <p>
+        LLMs are powerful generators.
+        They are not judges.
+      </p>
+    
+      <p>
+        Engineering systems that pretend otherwise
+        are outsourcing accountability to probability.
+        That never ends well.
+      </p>
+      <h3>Architecture: Deterministic Enforcement Around LLMs</h3>
+
+      <pre class="diagram">
+      ┌─────────────────────┐
+      │   User / System     │
+      │   Request           │
+      └─────────┬───────────┘
+                │
+                ▼
+      ┌─────────────────────┐
+      │   LLM Generator     │
+      │   (probabilistic)   │
+      └─────────┬───────────┘
+                │
+                ▼
+      ┌──────────────────────────────────────┐
+      │   Deterministic Enforcers (Gate)      │
+      │                                      │
+      │   • SQL AST + schema validation       │
+      │   • Partition / cost enforcement     │
+      │   • Policy & tone rules              │
+      │   • Privacy / PII / secret detection │
+      │                                      │
+      │   → Pass / Fail + structured errors  │
+      └─────────┬───────────┬────────────────┘
+                │           │
+                │ pass      │ fail
+                ▼           ▼
+      ┌─────────────────┐   ┌──────────────────────────┐
+      │   Execute /     │   │  LLM Revision Loop       │
+      │   Send / Store  │   │  (explicit constraints)  │
+      └─────────────────┘   └──────────┬───────────────┘
+                                      │
+                                      └─── back to LLM
+      </pre>
+
+    </article>    
     
     <nav>
       <a href="index.html">Home</a>
