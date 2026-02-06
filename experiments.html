@@ -17,6 +17,7 @@
       <h2>Table of Contents</h2>
       <ul>
         <li><a href="#spelunk-cli">Spelunk CLI — Structured Investigation for Complex Data Systems</a></li>
+        <li><a href="#llm-judge-deterministic-experiments">SQLGlot, TextBlob, and Regex — Free and Deterministic Alternatives to LLM-as-a-Judge</a></li>
       </ul>
     </nav>
 
@@ -254,6 +255,154 @@
 
 
     </section>
+    <section class="section" id="llm-judge-deterministic-experiments">
+      <h2>SQLGlot, TextBlob, and Regex — Free and Deterministic Alternatives to LLM-as-a-Judge </h2>
+    
+      <h3>The goal</h3>
+      <p>
+        The goal of these experiments was to make the argument in this article concrete: if a constraint can be expressed
+        deterministically, it should be enforced deterministically.
+      </p>
+      <p>
+        In all three experiments, the enforcement tools were deliberately chosen for one property above all others:
+        <strong>determinism</strong>. Given the same input and the same rules, they always produced the same result.
+        There was no reinterpretation, no drift, and no probabilistic variance.
+      </p>
+      <p>
+        Instead of asking a second LLM to “review” or “judge” outputs, I tested a replacement architecture:
+        LLMs generate, deterministic tooling enforces, and violations return structured errors that feed a revision loop.
+      </p>
+    
+      <h3>Why this matters</h3>
+      <p>
+        “LLM-as-a-Judge” feels appealing because it avoids writing rules. But at trust boundaries, the problem is not
+        stylistic. It is structural.
+      </p>
+      <ul>
+        <li><strong>Rules fail loudly.</strong> They produce explicit, repeatable violations.</li>
+        <li><strong>LLM judges fail silently.</strong> The same input can yield different approvals over time.</li>
+      </ul>
+      <p>
+        These experiments focus on three domains where teams often default to probabilistic judgment even though
+        fully deterministic enforcement is available.
+      </p>
+    
+      <h3>Experiment 1: SQL enforcement with SQLGlot (AST + schema validation)</h3>
+      <p>
+        <strong>Problem:</strong> Teams want to execute LLM-generated SQL while preventing mechanical failures and
+        expensive mistakes: hallucinated columns, wrong tables, missing partition filters, and accidental full scans.
+      </p>
+      <p>
+        <strong>Common “judge” approach:</strong> ask another LLM whether the SQL “looks right.”
+      </p>
+      <p>
+        <strong>Deterministic alternative:</strong> parse SQL into an AST, extract referenced identifiers, and validate
+        against a frozen schema snapshot.
+      </p>
+    
+      <h4>What was enforced</h4>
+      <ul>
+        <li><strong>SQL validity:</strong> parseability and syntactic correctness</li>
+        <li><strong>Schema correctness:</strong> referenced tables and columns must exist in a frozen snapshot</li>
+        <li><strong>Cost constraints:</strong> required partition predicates must be present</li>
+        <li><strong>Fail-closed behavior:</strong> unknown identifiers are rejected with explicit reasons</li>
+      </ul>
+    
+      <p>
+        <strong>Determinism guarantee:</strong> Given the same SQL text, schema snapshot, and enforcement rules,
+        SQLGlot produced identical validation results on every run. There was no variance across executions.
+      </p>
+    
+      <p>
+        <strong>Outcome:</strong> Enforcement decisions were stable, replayable, and debuggable. Failures were
+        machine-readable and consistently correctable by the generator in a revision loop.
+      </p>
+    
+      <h3>Experiment 2: “Professional tone” as enforceable policy (TextBlob + explicit rules)</h3>
+      <p>
+        <strong>Problem:</strong> Teams often claim tone is subjective and rely on an LLM to judge whether outbound
+        text is “professional.”
+      </p>
+      <p>
+        In practice, production definitions of “professional” usually reduce to explicit policy:
+        no profanity, no harassment, no threats, no discriminatory language, and no sexual content.
+      </p>
+    
+      <h4>Deterministic enforcement approach</h4>
+      <ul>
+        <li><strong>Policy rules:</strong> lexicon-based profanity and slur detection</li>
+        <li><strong>Pattern checks:</strong> deterministic harassment and threat patterns</li>
+        <li><strong>Sentiment signals:</strong> TextBlob polarity used only as a thresholded signal, not as authority</li>
+        <li><strong>Structured violations:</strong> named rule failures with explicit evidence</li>
+      </ul>
+    
+      <p>
+        <strong>Determinism guarantee:</strong> Given the same text and the same policy rules, enforcement results
+        were identical across runs. The system did not reinterpret tone or “change its mind.”
+      </p>
+    
+      <p>
+        <strong>Outcome:</strong> The system enforced written policy, not vibes. When text failed, it failed for
+        the same reason every time, producing concrete remediation targets for the generator.
+      </p>
+    
+      <h3>Experiment 3: Privacy leakage detection with regex + checksum validation</h3>
+      <p>
+        <strong>Problem:</strong> Some teams ask an LLM judge whether outbound text leaks private data.
+        This is the riskiest usage pattern because privacy enforcement must be conservative and auditable.
+      </p>
+    
+      <h4>Deterministic enforcement approach</h4>
+      <ul>
+        <li><strong>PII patterns:</strong> regex detection for emails, phone numbers, and IDs</li>
+        <li><strong>Payment data:</strong> checksum validation for credit card numbers</li>
+        <li><strong>Secrets:</strong> deterministic secret scanners for API keys and tokens</li>
+        <li><strong>Trust boundaries:</strong> allowlists and denylists for internal domains</li>
+        <li><strong>Structured reporting:</strong> explicit violation categories with evidence</li>
+      </ul>
+    
+      <p>
+        <strong>Determinism guarantee:</strong> The same text always produced the same privacy findings under the
+        same ruleset. There was no probabilistic approval or missed violation due to reinterpretation.
+      </p>
+    
+      <p>
+        <strong>Outcome:</strong> Enforcement behaved like a real DLP system: replayable, explainable, and biased
+        toward failing closed. These properties are not optional at privacy boundaries.
+      </p>
+    
+      <h3>What these experiments demonstrate</h3>
+      <p>
+        Across all three domains, the same pattern emerged:
+      </p>
+      <ul>
+        <li><strong>Deterministic inputs produced deterministic outcomes.</strong></li>
+        <li>Violations were <strong>explicit, stable, and inspectable</strong>.</li>
+        <li>Enforcement logic was <strong>testable</strong> with fixed fixtures.</li>
+        <li>LLMs were most effective inside the <strong>revision loop</strong>, not at the gate.</li>
+      </ul>
+    
+      <h3>The architectural takeaway</h3>
+      <p>
+        These experiments reinforce the core architecture of this article:
+      </p>
+      <ul>
+        <li>LLMs generate candidate outputs.</li>
+        <li>Deterministic enforcers validate.</li>
+        <li>Failures return structured errors.</li>
+        <li>LLMs revise based on explicit constraints.</li>
+        <li>Repeat until valid.</li>
+      </ul>
+      <p>
+        <strong>LLMs propose. Deterministic systems decide.</strong>
+      </p>
+    
+      <p>
+        Determinism is not about rigidity. It is about making trust boundaries replayable,
+        inspectable, and accountable.
+      </p>
+    </section>
+    
 
     <!-- <section class="section">
       <h2>LLM Test Harness (llm_test)</h2>
