@@ -20,6 +20,7 @@
         <li><a href="#article-1">GGUF Wins on Determinism: Why Managed LLM Services Can’t Offer Reproducible Inference</a></li>
         <li><a href="#article-2">.prmpt: A Structured Contract for Working With LLMs in Production</a></li>
         <li><a href="#article-3">Rethinking “LLM-as-a-Judge” in Production Systems</a></li>
+        <li><a href="#article-4">Forkline: Treating Agent Behavior Like Code</a></li>
       </ul>
     </div>
 
@@ -705,7 +706,406 @@
                                       └─── back to LLM
       </pre>
 
-    </article>    
+    </article>
+    <article id="article-4" class="section">
+      <h2>Forkline: Treating Agent Behavior Like Code</h2>
+      <p class="article-meta">Saurav Venkat</p>
+      <p class="article-meta">February 27, 2026</p>
+
+      <p>
+        There is a quiet problem in every team shipping LLM-powered software:
+      </p>
+      <ul>
+        <li>You run the same agent twice. It does something different.</li>
+        <li>A model update ships. Your pipeline silently changes behavior.</li>
+        <li>A prompt edit "seems fine." No one checks whether the outputs changed.</li>
+      </ul>
+
+      <p>
+        This is not a hypothetical. It is the default state of agentic systems today.
+        And the standard response — logging, dashboards, vibes — does not solve it.
+      </p>
+
+      <p>
+        <a href="https://github.com/sauravvenkat/forkline">Forkline</a> is a Python library I built to
+        fix this. It makes agent runs <b>reproducible</b>, <b>inspectable</b>, and <b>diffable</b>.
+        It treats nondeterminism as something to control, not just observe.
+      </p>
+
+      <h3>The Problem: Nondeterminism Without Accountability</h3>
+      <p>
+        LLMs are probabilistic. That is fine for generation.
+        But when an LLM is embedded in a system — calling tools, writing SQL,
+        making decisions — <i>you need to know when its behavior changes</i>.
+      </p>
+
+      <p>
+        Today, most teams cannot answer a simple question:
+      </p>
+
+      <p>
+        <i>"Did this agent do the same thing it did yesterday?"</i>
+      </p>
+
+      <p>
+        Not approximately. Not "the metrics look similar."
+        Exactly. Step by step. Input by input. Output by output.
+      </p>
+
+      <p>
+        Without that answer, every deployment is a guess.
+        Every model upgrade is a prayer.
+        Every prompt change is untested in the only way that matters:
+        <b>behavioral identity</b>.
+      </p>
+
+      <h3>What Forkline Does</h3>
+      <p>
+        Forkline is a local-first, replay-first tracing library.
+        It records agent runs as structured artifacts —
+        every step, every event, every tool call —
+        and provides deterministic tools to compare them.
+      </p>
+
+      <p>
+        The core loop is four operations:
+      </p>
+      <ol>
+        <li><b>Record</b> — capture a run as a versioned, normalized artifact</li>
+        <li><b>Replay</b> — re-execute and compare against a known baseline</li>
+        <li><b>Diff</b> — find the first point where behavior diverged</li>
+        <li><b>Gate</b> — fail a CI build if agent behavior changed</li>
+      </ol>
+
+      <p>
+        That last one matters most. Forkline lets you commit an agent's behavioral
+        baseline to version control and gate merges on it, the same way
+        you gate merges on passing tests.
+      </p>
+
+      <h3>Recording: Structured, Not Scattered</h3>
+      <p>
+        Forkline records runs using an explicit, append-only model.
+        No decorators. No magic. You instrument what matters.
+      </p>
+
+      <pre class="diagram">
+from forkline import Tracer
+
+with Tracer() as tracer:
+    with tracer.step("fetch_data"):
+        tracer.record_event("input", {"query": "SELECT ..."})
+        result = execute_query(query)
+        tracer.record_event("output", {"rows": len(result)})
+
+    with tracer.step("generate_summary"):
+        tracer.record_event("input", {"rows": result})
+        summary = llm.generate(result)
+        tracer.record_event("output", {"summary": summary})
+      </pre>
+
+      <p>
+        Every run produces a <code>Run</code> object with typed <code>Steps</code>
+        and <code>Events</code>. Events are classified as
+        <code>input</code>, <code>output</code>, <code>tool_call</code>, or <code>system</code>.
+        All payloads are JSON-serializable.
+        All artifacts are versioned with a schema that guarantees
+        forward and backward compatibility.
+      </p>
+
+      <h3>Diffing: First Divergence, Not Noise</h3>
+      <p>
+        When two runs differ, you do not want a wall of diffs.
+        You want the <b>first point where behavior diverged</b> — and why.
+      </p>
+
+      <p>
+        Forkline's diffing engine classifies divergences into seven types:
+      </p>
+      <ul>
+        <li><b>EXACT_MATCH</b> — runs are identical</li>
+        <li><b>INPUT_DIVERGENCE</b> — same step name, different input</li>
+        <li><b>OUTPUT_DIVERGENCE</b> — same step and input, different output</li>
+        <li><b>OP_DIVERGENCE</b> — step names differ (different operation)</li>
+        <li><b>MISSING_STEPS</b> — steps in the baseline not in the current run</li>
+        <li><b>EXTRA_STEPS</b> — steps in the current run not in the baseline</li>
+        <li><b>ERROR_DIVERGENCE</b> — error state differs</li>
+      </ul>
+
+      <p>
+        Each divergence comes with JSON patch diffs, surrounding context,
+        and a human-readable explanation. This is not "something changed."
+        This is "step 3 produced a different output given the same input,
+        and here is exactly what changed."
+      </p>
+
+      <pre class="diagram">
+$ forkline diff a1b2c3 d4e5f6
+
+First divergence at step 3: "generate_summary"
+  Type: OUTPUT_DIVERGENCE
+
+  Input (identical):
+    {"rows": [{"id": 1, "name": "Alice"}, ...]}
+
+  Output diff:
+    $.summary: "Alice has 3 orders" → "Alice placed 3 orders recently"
+
+  Context:
+    step 2: fetch_data     — matched
+    step 3: generate_summary — DIVERGED ← you are here
+    step 4: send_email     — not compared
+      </pre>
+
+      <h3>CI Integration: Behavioral Gating</h3>
+      <p>
+        This is where Forkline becomes a build system primitive.
+      </p>
+
+      <p>
+        The <code>forkline ci</code> command suite lets you record a baseline artifact,
+        commit it to version control, and gate merges on behavioral identity.
+        If the agent does something different, the build fails.
+      </p>
+
+      <pre class="diagram">
+# Record a baseline (local dev)
+$ forkline ci record \
+    --entrypoint examples/my_flow.py \
+    --out tests/testdata/my_flow.run.json
+
+# Commit it
+$ git add tests/testdata/my_flow.run.json
+
+# In CI: gate on behavioral identity
+$ forkline ci check \
+    --entrypoint examples/my_flow.py \
+    --expected tests/testdata/my_flow.run.json \
+    --offline
+# Exit 0 = identical behavior
+# Exit 1 = behavior changed → fail the build
+      </pre>
+
+      <p>
+        The <code>--offline</code> flag is critical. It monkeypatches
+        <code>socket.connect</code> at the Python level so that <b>any</b>
+        network call — <code>requests</code>, <code>httpx</code>, <code>urllib3</code>,
+        anything built on <code>socket</code> — raises immediately.
+        No hangs. No timeouts. Deterministic failure.
+      </p>
+
+      <p>
+        CI artifacts are normalized JSON files. Timestamps are stripped.
+        Platform metadata is removed. Events are sorted.
+        Two recordings of the same behavior on different machines,
+        at different times, produce <b>identical</b> artifacts.
+      </p>
+
+      <h4>Exit Code Contract</h4>
+      <p>
+        CI pipelines need machine-readable outcomes.
+        Forkline defines a strict, stable exit code contract:
+      </p>
+      <ul>
+        <li><b>0</b> — success, no diff</li>
+        <li><b>1</b> — diff detected (fail the build)</li>
+        <li><b>2</b> — usage or config error</li>
+        <li><b>3</b> — script failed during replay</li>
+        <li><b>4</b> — network attempted in offline mode</li>
+        <li><b>5</b> — artifact or schema error</li>
+        <li><b>6</b> — internal error</li>
+      </ul>
+
+      <p>
+        These values are documented, tested individually,
+        and will not change across releases.
+      </p>
+
+      <h3>Testing: One-Line Behavioral Assertions</h3>
+      <p>
+        For teams using pytest or unittest, Forkline provides a
+        snapshot-style test helper:
+      </p>
+
+      <pre class="diagram">
+from forkline.testing import assert_no_diff
+
+def test_my_agent_flow():
+    assert_no_diff(
+        entrypoint="examples/my_flow.py",
+        expected_artifact="tests/testdata/my_flow.run.json",
+        offline=True,
+    )
+      </pre>
+
+      <p>
+        On failure, it raises <code>ArtifactDiffError</code> with the first
+        divergent event, expected vs actual payloads, a structured diff,
+        and a suggested re-record command. This is not a flaky test.
+        This is a test that tells you exactly what changed and how to fix it.
+      </p>
+
+      <h3>Design Principles</h3>
+      <p>
+        Forkline is opinionated about how agent infrastructure should work:
+      </p>
+
+      <ul>
+        <li>
+          <b>Replay-first, not dashboards-first.</b>
+          A run that cannot be replayed is incomplete.
+          Metrics and dashboards tell you something changed.
+          Replay tells you what, where, and why.
+        </li>
+        <li>
+          <b>Diff over dashboards.</b>
+          Agent behavior is treated like code.
+          Changes are understood through diffs, not charts.
+        </li>
+        <li>
+          <b>Local-first.</b>
+          All artifacts are stored locally. Replay works offline.
+          No hidden remote state. No vendor lock-in.
+        </li>
+        <li>
+          <b>Explicit over implicit.</b>
+          No decorators. No auto-instrumentation. No magic.
+          You record what matters. You diff what you recorded.
+        </li>
+        <li>
+          <b>Zero dependencies.</b>
+          Forkline uses only the Python standard library.
+          No <code>requests</code>. No <code>pandas</code>. No runtime surprises.
+        </li>
+      </ul>
+
+      <h3>Security: Redaction by Default</h3>
+      <p>
+        Agent runs contain sensitive data — API keys, user inputs, PII.
+        Forkline enforces redaction <i>at capture time</i>, before anything
+        touches disk.
+      </p>
+
+      <p>
+        The <code>RedactionPolicy</code> supports three strategies:
+      </p>
+      <ul>
+        <li><b>MASK</b> — replace with a sentinel value</li>
+        <li><b>HASH</b> — deterministic hash (preserves diffability)</li>
+        <li><b>DROP</b> — remove entirely</li>
+      </ul>
+
+      <p>
+        Matching is done by key name, dot-separated path, or regex pattern.
+        The default SAFE mode redacts LLM prompts and responses, tool I/O,
+        and anything that looks like a secret.
+        Secrets never reach disk. This is not configurable — it is the default.
+      </p>
+
+      <h3>Why Not Observability Tools?</h3>
+      <p>
+        Existing observability tools — LangSmith, Weights & Biases, OpenTelemetry —
+        are built for <i>monitoring</i>. They answer: "What happened?"
+      </p>
+
+      <p>
+        Forkline answers a different question:
+        <b>"Did the same thing happen?"</b>
+      </p>
+
+      <p>
+        Monitoring is about aggregation. Forkline is about identity.
+        Monitoring shows trends. Forkline shows diffs.
+        Monitoring runs in production. Forkline runs in CI.
+      </p>
+
+      <p>
+        These are complementary, not competing. But if you are shipping agents
+        without behavioral gating, you are testing less than you think.
+      </p>
+
+      <h3>The Principle</h3>
+      <p>
+        <b>
+          If you would not ship code without tests,
+          you should not ship agents without behavioral baselines.
+        </b>
+      </p>
+
+      <p>
+        An agent that "seems to work" is not tested.
+        An agent whose behavior is recorded, diffed, and gated — that is tested.
+      </p>
+
+      <h3>Conclusion</h3>
+      <p>
+        Forkline exists because "it changed" is not a useful debugging answer.
+      </p>
+
+      <p>
+        LLMs are nondeterministic. That is their nature.
+        But the systems we build around them do not have to be.
+        We can record what agents do. We can replay it.
+        We can diff it. We can fail builds when behavior changes unexpectedly.
+      </p>
+
+      <p>
+        We can treat agent behavior like code —
+        versioned, diffed, and gated.
+      </p>
+
+      <p>
+        That is what Forkline does.
+      </p>
+
+      <h3>Architecture: Record → Replay → Diff → Gate</h3>
+
+      <pre class="diagram">
+      ┌─────────────────────┐
+      │   Agent Script      │
+      │   (nondeterministic) │
+      └─────────┬───────────┘
+                │
+                ▼
+      ┌─────────────────────┐
+      │   Forkline Tracer    │
+      │                     │
+      │   • Steps + Events  │
+      │   • Redaction       │
+      │   • Canonicalization │
+      └─────────┬───────────┘
+                │
+                ▼
+      ┌──────────────────────────────────────┐
+      │   Normalized Artifact (.run.json)    │
+      │                                      │
+      │   • Timestamps stripped              │
+      │   • Platform metadata removed        │
+      │   • Events sorted                    │
+      │   • Schema-versioned                 │
+      └─────────┬───────────┬────────────────┘
+                │           │
+         commit to git    compare
+                │           │
+                ▼           ▼
+      ┌─────────────────┐   ┌──────────────────────────┐
+      │   Baseline       │   │  Diff Engine             │
+      │   (expected)     │──▶│  First-divergence search │
+      └─────────────────┘   │  7 divergence types      │
+                            │  JSON patch output       │
+                            └──────────┬───────────────┘
+                                       │
+                            ┌──────────┴───────────────┐
+                            │  pass          fail       │
+                            │  (exit 0)      (exit 1)   │
+                            ▼                ▼          │
+                     CI passes        Build fails       │
+                                      with structured   │
+                                      diff + fix hint   │
+                            └──────────────────────────┘
+      </pre>
+
+    </article>   
     
     <nav>
       <a href="index.html">Home</a>
